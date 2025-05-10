@@ -3,13 +3,19 @@
 
 #include <QMainWindow>
 
+#include "video_speed_changer_widget.h"
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 public:
-    explicit MainWindow(QWidget *parent = nullptr): QMainWindow(parent){
+    explicit MainWindow(QWidget *parent = nullptr) : QMainWindow(parent)
+    {
+        VideoSpeedChangerWidget *mainWidget = new VideoSpeedChangerWidget(this);
+        setCentralWidget(mainWidget);
     }
-    ~MainWindow(){}
+    ~MainWindow() {}
+
 private:
 };
 

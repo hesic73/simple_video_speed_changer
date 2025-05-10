@@ -6,6 +6,7 @@
                 "${default}",
                 "/home/admin1/Qt/6.6.2/gcc_64/include/QtCore",
                 "/home/admin1/Qt/6.6.2/gcc_64/include/QtWidgets",
+                "/home/admin1/Qt/6.6.2/gcc_64/include/QtGui",
                 "/home/admin1/Qt/6.6.2/gcc_64/include"
             ],
             "defines": [],

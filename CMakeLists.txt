@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(my_project VERSION 0.1 LANGUAGES CXX)
+project(simple_video_speed_changer VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,10 +15,12 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
 set(PROJECT_SOURCES
     main.cpp
     main_window.hpp
+    video_speed_changer_widget.h
+    video_speed_changer_widget.cpp
 )
 
 set(EXE_NAME
-    my_executable
+    video_speed_changer
 )
 
 qt_add_executable(${EXE_NAME}
