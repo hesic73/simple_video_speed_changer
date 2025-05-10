@@ -1,0 +1,5 @@
+{
+    "cmake.configureSettings": {
+        "CMAKE_PREFIX_PATH": "/home/admin1/Qt/6.6.2/gcc_64/",
+    }
+}
