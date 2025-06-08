@@ -106,7 +106,7 @@ void VideoSpeedChangerWidget::setupUi()
     videoFilesLayout->addWidget(videoFilesListWidget);
     videoFilesLayout->addLayout(videoButtonsLayout);
     videoFilesGroup->setLayout(videoFilesLayout);
-    mainLayout->addWidget(videoFilesGroup);
+    mainLayout->addWidget(videoFilesGroup, 1);
 
     connect(chooseVideoFilesButton, &QPushButton::clicked, this, &VideoSpeedChangerWidget::chooseVideoFiles);
     connect(clearListButton, &QPushButton::clicked, this, &VideoSpeedChangerWidget::clearVideoList);
@@ -178,11 +178,11 @@ void VideoSpeedChangerWidget::setupUi()
     progressBar->setVisible(false);
     logOutputArea = new QPlainTextEdit(this);
     logOutputArea->setReadOnly(true);
-    logOutputArea->setMaximumHeight(150);
+    // logOutputArea->setMaximumHeight(150);
 
     mainLayout->addWidget(processVideosButton);
     mainLayout->addWidget(progressBar);
-    mainLayout->addWidget(logOutputArea);
+    mainLayout->addWidget(logOutputArea, 2);
 
     connect(processVideosButton, &QPushButton::clicked, this, &VideoSpeedChangerWidget::processVideos);
 
@@ -558,11 +558,12 @@ void VideoSpeedChangerWidget::processNextVideo()
             int fontSize = fontSizeSpinBox->value();
             QString escapedFontFile = fontFile;
 #ifdef Q_OS_WIN
-            escapedFontFile.replace(":", "\\:");
             escapedFontFile.replace("\\", "/");
+            escapedFontFile.replace(":", "\\\\:");
 #endif
-            QString drawTextFilter = QString("drawtext=fontfile='%1':text='%2':fontcolor=white:fontsize=%3:x=w-tw-10:y=h-th-10:shadowcolor=black:shadowx=2:shadowy=2")
-                                         .arg(escapedFontFile, text.replace("'", "\\'"), QString::number(fontSize));
+            qDebug() << "Escaped font path:" << escapedFontFile;
+            QString drawTextFilter = QString("drawtext=text=%1:fontcolor=white:fontsize=%2:x=w-tw-10:y=h-th-10:shadowcolor=black:shadowx=2:shadowy=2:fontfile=\"%3\"")
+                                         .arg(text.replace("'", "\\'"), QString::number(fontSize), escapedFontFile);
             videoFilters << drawTextFilter;
         }
     }
