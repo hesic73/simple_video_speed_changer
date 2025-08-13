@@ -22,6 +22,7 @@
 #include <QDoubleSpinBox>
 #include <QLineEdit>
 #include <QLabel>
+#include <QRegularExpression>
 
 // Anonymous namespace for constants local to this translation unit
 namespace
@@ -493,6 +494,17 @@ void VideoSpeedChangerWidget::saveSettings()
     settings.setValue("fontSize", fontSizeSpinBox->value());
 }
 
+
+// Helper function: remove trailing zeros and dot from a double string
+static QString cleanDoubleString(double value)
+{
+    QString s = QString::number(value, 'f', 2);
+    s = s.replace(QRegularExpression("(\\.\\d*?[1-9])0+$"), "\\1"); // Remove unnecessary trailing zeros after decimal point
+    s = s.replace(QRegularExpression("\\.0+$"), ""); // Remove .00
+    if (s.endsWith('.')) s.chop(1);
+    return s;
+}
+
 void VideoSpeedChangerWidget::processNextVideo()
 {
     if (filesToProcess.isEmpty())
@@ -510,8 +522,9 @@ void VideoSpeedChangerWidget::processNextVideo()
     QString baseName = inputFileInfo.completeBaseName();
     QString extension = inputFileInfo.suffix();
     double speed = speedFactorSpinBox->value();
+    QString speedStr = cleanDoubleString(speed);
 
-    currentOutputFile = QDir(outputDirectory).filePath(QString("%1_x%2.%3").arg(baseName).arg(QString::number(speed, 'f', 2)).arg(extension));
+    currentOutputFile = QDir(outputDirectory).filePath(QString("%1_x%2.%3").arg(baseName).arg(speedStr).arg(extension));
 
     if (ffmpegProcess)
     {
@@ -532,7 +545,7 @@ void VideoSpeedChangerWidget::processNextVideo()
     connect(ffmpegProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error)
             {
         logOutputArea->appendPlainText(QString("FFmpeg process error: %1 for file %2. FFmpeg error string: %3")
-                                       .arg(static_cast<int>(error)) // Cast for clarity if needed by arg
+                                       .arg(static_cast<int>(error))
                                        .arg(QFileInfo(currentInputFile).fileName())
                                        .arg(ffmpegProcess ? ffmpegProcess->errorString() : "N/A"));
         onFfmpegProcessFinished(-1, QProcess::CrashExit); });
@@ -554,7 +567,7 @@ void VideoSpeedChangerWidget::processNextVideo()
         }
         else
         {
-            QString text = QString("x %1").arg(QString::number(speed, 'f', 2));
+            QString text = QString("x %1").arg(cleanDoubleString(speed));
             int fontSize = fontSizeSpinBox->value();
             QString escapedFontFile = fontFile;
 #ifdef Q_OS_WIN
@@ -562,7 +575,7 @@ void VideoSpeedChangerWidget::processNextVideo()
             escapedFontFile.replace(":", "\\\\:");
 #endif
             qDebug() << "Escaped font path:" << escapedFontFile;
-            QString drawTextFilter = QString("drawtext=text=%1:fontcolor=white:fontsize=%2:x=w-tw-10:y=h-th-10:shadowcolor=black:shadowx=2:shadowy=2:fontfile=\"%3\"")
+            QString drawTextFilter = QString("drawtext=text='%1':fontcolor=white:fontsize=%2:x=w-tw-10:y=h-th-10:shadowcolor=black:shadowx=2:shadowy=2:fontfile=\"%3\"")
                                          .arg(text.replace("'", "\\'"), QString::number(fontSize), escapedFontFile);
             videoFilters << drawTextFilter;
         }
