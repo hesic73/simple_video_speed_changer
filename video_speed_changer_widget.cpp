@@ -23,6 +23,8 @@
 #include <QLineEdit>
 #include <QLabel>
 #include <QRegularExpression>
+#include <QColorDialog>
+#include <QColor>
 
 // Anonymous namespace for constants local to this translation unit
 namespace
@@ -154,6 +156,14 @@ void VideoSpeedChangerWidget::setupUi()
     fontSizeSpinBox->setRange(8, 200);
     fontSizeSpinBox->setValue(64);
     overlayLayout->addRow("Font Size:", fontSizeSpinBox);
+    fontColorEdit = new QLineEdit(this);
+    fontColorEdit->setPlaceholderText("e.g. #ffffff or white");
+    fontColorEdit->setText(defaultFontColor);
+    chooseFontColorButton = new QPushButton("Choose Color...", this);
+    QHBoxLayout *fontColorLayout = new QHBoxLayout();
+    fontColorLayout->addWidget(fontColorEdit);
+    fontColorLayout->addWidget(chooseFontColorButton);
+    overlayLayout->addRow("Font Color:", fontColorLayout);
     overlayGroupBox->setLayout(overlayLayout);
     mainLayout->addWidget(overlayGroupBox);
 
@@ -171,6 +181,24 @@ void VideoSpeedChangerWidget::setupUi()
         if (!path.isEmpty()) {
             fontPathEdit->setText(path);
         } });
+    connect(chooseFontColorButton, &QPushButton::clicked, [this]()
+            {
+        QColor initialColor;
+        QString currentColorText = fontColorEdit->text().trimmed();
+        if (!currentColorText.isEmpty())
+        {
+            initialColor = QColor(currentColorText);
+        }
+        if (!initialColor.isValid())
+        {
+            initialColor = QColor(defaultFontColor);
+        }
+        QColor selectedColor = QColorDialog::getColor(initialColor, this, "Select Font Color");
+        if (selectedColor.isValid())
+        {
+            fontColorEdit->setText(selectedColor.name(QColor::HexRgb));
+        }
+    });
 
     // Process and Progress Section
     processVideosButton = new QPushButton("Process Videos", this);
@@ -462,6 +490,8 @@ void VideoSpeedChangerWidget::onOverlayEnabledChanged(bool checked)
     fontPathEdit->setEnabled(checked);
     chooseFontPathButton->setEnabled(checked);
     fontSizeSpinBox->setEnabled(checked);
+    fontColorEdit->setEnabled(checked);
+    chooseFontColorButton->setEnabled(checked);
 }
 
 void VideoSpeedChangerWidget::loadSettings()
@@ -480,6 +510,7 @@ void VideoSpeedChangerWidget::loadSettings()
     overlayGroupBox->setChecked(settings.value("overlayEnabled", false).toBool());
     fontPathEdit->setText(settings.value("fontPath", defaultFontPath).toString());
     fontSizeSpinBox->setValue(settings.value("fontSize", 64).toInt());
+    fontColorEdit->setText(settings.value("fontColor", defaultFontColor).toString());
     onOverlayEnabledChanged(overlayGroupBox->isChecked());
 }
 
@@ -492,6 +523,7 @@ void VideoSpeedChangerWidget::saveSettings()
     settings.setValue("overlayEnabled", overlayGroupBox->isChecked());
     settings.setValue("fontPath", fontPathEdit->text());
     settings.setValue("fontSize", fontSizeSpinBox->value());
+    settings.setValue("fontColor", fontColorEdit->text());
 }
 
 
@@ -570,13 +602,32 @@ void VideoSpeedChangerWidget::processNextVideo()
             QString text = QString("x %1").arg(cleanDoubleString(speed));
             int fontSize = fontSizeSpinBox->value();
             QString escapedFontFile = fontFile;
+            QString fontColorText = fontColorEdit->text().trimmed();
+            QColor resolvedColor;
+            if (fontColorText.isEmpty())
+            {
+                resolvedColor = QColor(defaultFontColor);
+            }
+            else
+            {
+                resolvedColor = QColor(fontColorText);
+                if (!resolvedColor.isValid())
+                {
+                    logOutputArea->appendPlainText(QString("Warning: Font color '%1' is invalid. Using default '%2'.")
+                                                       .arg(fontColorText, defaultFontColor));
+                    resolvedColor = QColor(defaultFontColor);
+                }
+            }
+            QString fontColorValue = resolvedColor.isValid() ? resolvedColor.name(QColor::HexRgb) : defaultFontColor;
+            QString ffmpegFontColor = fontColorValue;
+            ffmpegFontColor.replace("#", "\\#");
 #ifdef Q_OS_WIN
             escapedFontFile.replace("\\", "/");
             escapedFontFile.replace(":", "\\\\:");
 #endif
             qDebug() << "Escaped font path:" << escapedFontFile;
-            QString drawTextFilter = QString("drawtext=text='%1':fontcolor=white:fontsize=%2:x=w-tw-10:y=h-th-10:shadowcolor=black:shadowx=2:shadowy=2:fontfile=\"%3\"")
-                                         .arg(text.replace("'", "\\'"), QString::number(fontSize), escapedFontFile);
+            QString drawTextFilter = QString("drawtext=text='%1':fontcolor=%2:fontsize=%3:x=w-tw-10:y=h-th-10:shadowcolor=black:shadowx=2:shadowy=2:fontfile=\"%4\"")
+                                         .arg(text.replace("'", "\\'"), ffmpegFontColor, QString::number(fontSize), escapedFontFile);
             videoFilters << drawTextFilter;
         }
     }
@@ -675,6 +726,8 @@ void VideoSpeedChangerWidget::setControlsEnabled(bool enabled)
         fontPathEdit->setEnabled(false);
         chooseFontPathButton->setEnabled(false);
         fontSizeSpinBox->setEnabled(false);
+        fontColorEdit->setEnabled(false);
+        chooseFontColorButton->setEnabled(false);
     }
     // processVideosButton's state is managed by updateProcessButtonState or directly when starting/stopping
     // but it should generally follow 'enabled' unless processing has just started
