@@ -77,6 +77,8 @@ private:
     QLineEdit *fontPathEdit;
     QPushButton *chooseFontPathButton;
     QSpinBox *fontSizeSpinBox;
+    QLineEdit *fontColorEdit;
+    QPushButton *chooseFontColorButton;
 
     QPushButton *processVideosButton;
     QProgressBar *progressBar;
@@ -93,6 +95,7 @@ private:
     QString currentOutputFile;
     QString defaultFfmpegPath = "ffmpeg";
     QString defaultFontPath;
+    QString defaultFontColor = "white";
 };
 
 #endif // _VIDEO_SPEED_CHANGER_WIDGET_H
