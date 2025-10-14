@@ -28,6 +28,13 @@ qt_add_executable(${EXE_NAME}
     ${PROJECT_SOURCES}
 )
 
+if (WIN32)
+  # On Windows, hide the console in Release mode and keep it in Debug mode.
+  set_target_properties(${EXE_NAME} PROPERTIES
+      WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>
+  )
+endif()
+
 qt_add_resources(${EXE_NAME} "resources"
         PREFIX "/"
         FILES assets/icon.png
