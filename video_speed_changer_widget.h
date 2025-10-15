@@ -2,8 +2,9 @@
 #define _VIDEO_SPEED_CHANGER_WIDGET_H
 
 #include <QWidget>
-#include <QProcess>
-#include <QStringList> // For forward declaration if needed, or for VIDEO_EXTENSIONS_LIST if kept here
+#include <QStringList>
+
+#include "ffmpeg_processor.h" // Include the new processor header
 
 // Forward declarations for Qt classes to minimize header includes
 QT_BEGIN_NAMESPACE
@@ -19,12 +20,6 @@ class QPlainTextEdit;
 class QDragEnterEvent;
 class QMimeData;
 QT_END_NAMESPACE
-
-// It's common to declare constants like this in the .cpp if they are only used there,
-// or in the .hpp (e.g., in a namespace or as static const member) if needed by users of the header.
-// For this case, VIDEO_EXTENSIONS_LIST is used in slots implemented in .cpp, so it can be in .cpp.
-// However, if isValidVideoFile were to be public and used outside, it might be better here.
-// Let's keep it in the .cpp for now via an anonymous namespace or static const.
 
 class VideoSpeedChangerWidget : public QWidget
 {
@@ -44,20 +39,23 @@ private slots:
     void chooseOutputDirectory();
     void clearVideoList();
     void processVideos();
-    void onFfmpegProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
-    void onFfmpegReadyReadStandardOutput();
-    void onFfmpegReadyReadStandardError();
     void updateProcessButtonState();
     void onOverlayEnabledChanged(bool checked);
+
+    // Slots to connect to FfmpegProcessor
+    void onProcessingStarted();
+    void onProcessingFinished(bool success, const QString &outputFile);
+    void onLogMessage(const QString &message);
+    void onErrorOccurred(const QString &message);
 
 private:
     void setupUi();
     void loadSettings();
     void saveSettings();
     void processNextVideo();
-    QStringList generateAtempoFilter(double speedFactor);
     bool isValidVideoFile(const QString &filePath);
     void setControlsEnabled(bool enabled);
+    static QString cleanDoubleString(double value);
 
     // UI Elements
     QLineEdit *ffmpegPathEdit;
@@ -90,9 +88,9 @@ private:
     int totalFilesToProcess = 0;
     int filesProcessedCount = 0;
 
-    QProcess *ffmpegProcess;
-    QString currentInputFile;
-    QString currentOutputFile;
+    FfmpegProcessor *ffmpegProcessor;
+    bool isProcessing = false;
+
     QString defaultFfmpegPath = "ffmpeg";
     QString defaultFontPath;
     QString defaultFontColor = "white";

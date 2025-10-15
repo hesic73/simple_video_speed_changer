@@ -17,6 +17,8 @@ set(PROJECT_SOURCES
     main_window.hpp
     video_speed_changer_widget.h
     video_speed_changer_widget.cpp
+    ffmpeg_processor.h
+    ffmpeg_processor.cpp
 )
 
 set(EXE_NAME

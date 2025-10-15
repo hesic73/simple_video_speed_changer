@@ -1,30 +1,30 @@
 #include "video_speed_changer_widget.h"
 
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QFormLayout>
-#include <QMessageBox>
-#include <QStandardPaths>
-#include <QFileInfo>
-#include <QDir>
+#include "ffmpeg_processor.h"
+#include <QColorDialog>
 #include <QDebug>
-#include <QUrl>
-#include <QSettings>
-#include <QGroupBox>       // Included for QGroupBox definition
-#include <QDragEnterEvent> // Included for event definitions
-#include <QMimeData>       // Included for event definitions
+#include <QDir>
+#include <QDoubleSpinBox>
+#include <QDragEnterEvent>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
+#include <QMessageBox>
+#include <QMimeData>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
-#include <QSpinBox>
-#include <QDoubleSpinBox>
-#include <QLineEdit>
-#include <QLabel>
 #include <QRegularExpression>
-#include <QColorDialog>
-#include <QColor>
+#include <QSettings>
+#include <QSpinBox>
+#include <QStandardPaths>
+#include <QUrl>
+#include <QVBoxLayout>
 
 // Anonymous namespace for constants local to this translation unit
 namespace
@@ -33,7 +33,7 @@ namespace
 }
 
 VideoSpeedChangerWidget::VideoSpeedChangerWidget(QWidget *parent)
-    : QWidget(parent), outputDirectory(QDir::currentPath()), ffmpegProcess(nullptr)
+    : QWidget(parent), outputDirectory(QDir::currentPath()), ffmpegProcessor(new FfmpegProcessor(this))
 {
 #if defined(Q_OS_WIN)
     defaultFontPath = "C:/Windows/Fonts/arial.ttf";
@@ -59,21 +59,17 @@ VideoSpeedChangerWidget::VideoSpeedChangerWidget(QWidget *parent)
     loadSettings();
     updateProcessButtonState();
     setAcceptDrops(true);
+
+    connect(ffmpegProcessor, &FfmpegProcessor::processingStarted, this, &VideoSpeedChangerWidget::onProcessingStarted);
+    connect(ffmpegProcessor, &FfmpegProcessor::processingFinished, this, &VideoSpeedChangerWidget::onProcessingFinished);
+    connect(ffmpegProcessor, &FfmpegProcessor::logMessage, this, &VideoSpeedChangerWidget::onLogMessage);
+    connect(ffmpegProcessor, &FfmpegProcessor::errorOccurred, this, &VideoSpeedChangerWidget::onErrorOccurred);
 }
 
 VideoSpeedChangerWidget::~VideoSpeedChangerWidget()
 {
     saveSettings();
-    if (ffmpegProcess)
-    {
-        if (ffmpegProcess->state() != QProcess::NotRunning)
-        {
-            ffmpegProcess->kill();
-            ffmpegProcess->waitForFinished(1000);
-        }
-        delete ffmpegProcess;
-        ffmpegProcess = nullptr;
-    }
+    ffmpegProcessor->cancelProcessing();
 }
 
 void VideoSpeedChangerWidget::setupUi()
@@ -416,63 +412,43 @@ void VideoSpeedChangerWidget::processVideos()
     progressBar->setRange(0, totalFilesToProcess);
     progressBar->setValue(0);
     progressBar->setVisible(true);
-    setControlsEnabled(false);
 
+    ffmpegProcessor->setFfmpegPath(ffmpegPathEdit->text());
     processNextVideo();
 }
 
-void VideoSpeedChangerWidget::onFfmpegProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
+void VideoSpeedChangerWidget::onProcessingStarted()
 {
-    QString currentFileNameForLog = QFileInfo(currentInputFile).fileName();
-    if (!ffmpegProcess)
+    isProcessing = true;
+    setControlsEnabled(false);
+    updateProcessButtonState();
+}
+
+void VideoSpeedChangerWidget::onProcessingFinished(bool success, const QString &outputFile)
+{
+    isProcessing = false;
+    if (success)
     {
-        logOutputArea->appendPlainText(QString("FFmpeg process for %1 was unexpectedly null during finish.").arg(currentFileNameForLog));
+        filesProcessedCount++;
+        progressBar->setValue(filesProcessedCount);
     }
     else
     {
-        if (exitStatus == QProcess::CrashExit)
-        {
-            logOutputArea->appendPlainText(QString("Error: FFmpeg crashed while processing %1. Error: %2").arg(currentFileNameForLog, ffmpegProcess->errorString()));
-            QMessageBox::critical(this, "FFmpeg Crash", "FFmpeg crashed. Check logs for details on file: " + currentFileNameForLog);
-        }
-        else if (exitCode != 0)
-        {
-            logOutputArea->appendPlainText(QString("Error: FFmpeg failed (exit code %1) for %2. Error: %3").arg(exitCode).arg(currentFileNameForLog, ffmpegProcess->errorString()));
-            QMessageBox::warning(this, "Processing Error", QString("Failed to process %1. Exit code: %2.").arg(currentFileNameForLog).arg(exitCode));
-        }
-        else
-        {
-            logOutputArea->appendPlainText(QString("Successfully processed: %1").arg(QFileInfo(currentOutputFile).fileName()));
-            filesProcessedCount++;
-            progressBar->setValue(filesProcessedCount);
-        }
-
-        ffmpegProcess->disconnect();
-        ffmpegProcess->deleteLater();
-        ffmpegProcess = nullptr;
+        QMessageBox::warning(this, "Processing Error", QString("Failed to process %1.").arg(QFileInfo(outputFile).fileName()));
     }
 
     processNextVideo();
 }
 
-void VideoSpeedChangerWidget::onFfmpegReadyReadStandardOutput()
+void VideoSpeedChangerWidget::onLogMessage(const QString &message)
 {
-    if (ffmpegProcess)
-    {
-        QByteArray data = ffmpegProcess->readAllStandardOutput();
-        logOutputArea->appendPlainText(QString::fromUtf8(data).trimmed());
-        qDebug().noquote() << "FFMPEG_STDOUT:" << QString::fromUtf8(data).trimmed();
-    }
+    logOutputArea->appendPlainText(message);
 }
 
-void VideoSpeedChangerWidget::onFfmpegReadyReadStandardError()
+void VideoSpeedChangerWidget::onErrorOccurred(const QString &message)
 {
-    if (ffmpegProcess)
-    {
-        QByteArray data = ffmpegProcess->readAllStandardError();
-        logOutputArea->appendPlainText(QString::fromLocal8Bit(data).trimmed());
-        qDebug().noquote() << "FFMPEG_STDERR:" << QString::fromLocal8Bit(data).trimmed();
-    }
+    logOutputArea->appendPlainText("ERROR: " + message);
+    QMessageBox::critical(this, "FFmpeg Error", message);
 }
 
 void VideoSpeedChangerWidget::updateProcessButtonState()
@@ -480,7 +456,6 @@ void VideoSpeedChangerWidget::updateProcessButtonState()
     bool hasFiles = videoFilesListWidget->count() > 0;
     bool outputDirSelected = !outputDirectory.isEmpty() && QDir(outputDirectory).exists();
     bool ffmpegPathOk = !ffmpegPathEdit->text().isEmpty();
-    bool isProcessing = (ffmpegProcess && ffmpegProcess->state() != QProcess::NotRunning) || !filesToProcess.isEmpty();
 
     processVideosButton->setEnabled(hasFiles && outputDirSelected && ffmpegPathOk && !isProcessing);
 }
@@ -528,12 +503,13 @@ void VideoSpeedChangerWidget::saveSettings()
 
 
 // Helper function: remove trailing zeros and dot from a double string
-static QString cleanDoubleString(double value)
+QString VideoSpeedChangerWidget::cleanDoubleString(double value)
 {
     QString s = QString::number(value, 'f', 2);
     s = s.replace(QRegularExpression("(\\.\\d*?[1-9])0+$"), "\\1"); // Remove unnecessary trailing zeros after decimal point
-    s = s.replace(QRegularExpression("\\.0+$"), ""); // Remove .00
-    if (s.endsWith('.')) s.chop(1);
+    s = s.replace(QRegularExpression("\\.0+$"), "");                // Remove .00
+    if (s.endsWith('.'))
+        s.chop(1);
     return s;
 }
 
@@ -544,159 +520,40 @@ void VideoSpeedChangerWidget::processNextVideo()
         progressBar->setVisible(false);
         QMessageBox::information(this, "Processing Complete", QString("All %1 videos processed successfully.").arg(totalFilesToProcess));
         logOutputArea->appendPlainText("All videos processed.");
+        isProcessing = false;
         setControlsEnabled(true);
         updateProcessButtonState();
         return;
     }
 
-    currentInputFile = filesToProcess.takeFirst();
+    QString currentInputFile = filesToProcess.takeFirst();
     QFileInfo inputFileInfo(currentInputFile);
     QString baseName = inputFileInfo.completeBaseName();
     QString extension = inputFileInfo.suffix();
     double speed = speedFactorSpinBox->value();
     QString speedStr = cleanDoubleString(speed);
 
-    currentOutputFile = QDir(outputDirectory).filePath(QString("%1_x%2.%3").arg(baseName).arg(speedStr).arg(extension));
-
-    if (ffmpegProcess)
-    {
-        if (ffmpegProcess->state() != QProcess::NotRunning)
-        {
-            ffmpegProcess->kill();
-            ffmpegProcess->waitForFinished(500);
-        }
-        delete ffmpegProcess;
-        ffmpegProcess = nullptr;
-    }
-    ffmpegProcess = new QProcess(this);
-    ffmpegProcess->disconnect();
-
-    connect(ffmpegProcess, &QProcess::finished, this, &VideoSpeedChangerWidget::onFfmpegProcessFinished);
-    connect(ffmpegProcess, &QProcess::readyReadStandardOutput, this, &VideoSpeedChangerWidget::onFfmpegReadyReadStandardOutput);
-    connect(ffmpegProcess, &QProcess::readyReadStandardError, this, &VideoSpeedChangerWidget::onFfmpegReadyReadStandardError);
-    connect(ffmpegProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error)
-            {
-        logOutputArea->appendPlainText(QString("FFmpeg process error: %1 for file %2. FFmpeg error string: %3")
-                                       .arg(static_cast<int>(error))
-                                       .arg(QFileInfo(currentInputFile).fileName())
-                                       .arg(ffmpegProcess ? ffmpegProcess->errorString() : "N/A"));
-        onFfmpegProcessFinished(-1, QProcess::CrashExit); });
-
-    QStringList arguments;
-    arguments << "-i" << currentInputFile;
-
-    QString videoFilterSetpts = QString("setpts=%1*PTS").arg(QString::number(1.0 / speed, 'f', 4));
-    QStringList videoFilters;
-    videoFilters << videoFilterSetpts;
-
-    if (overlayGroupBox->isChecked())
-    {
-        QString fontFile = fontPathEdit->text();
-        QFileInfo fontInfo(fontFile);
-        if (fontFile.isEmpty() || !fontInfo.exists() || !fontInfo.isFile())
-        {
-            logOutputArea->appendPlainText(QString("Warning: Font file '%1' not found or invalid for overlay on '%2'. Skipping overlay.").arg(fontFile, inputFileInfo.fileName()));
-        }
-        else
-        {
-            QString text = QString("x %1").arg(cleanDoubleString(speed));
-            int fontSize = fontSizeSpinBox->value();
-            QString escapedFontFile = fontFile;
-            QString fontColorText = fontColorEdit->text().trimmed();
-            QColor resolvedColor;
-            if (fontColorText.isEmpty())
-            {
-                resolvedColor = QColor(defaultFontColor);
-            }
-            else
-            {
-                resolvedColor = QColor(fontColorText);
-                if (!resolvedColor.isValid())
-                {
-                    logOutputArea->appendPlainText(QString("Warning: Font color '%1' is invalid. Using default '%2'.")
-                                                       .arg(fontColorText, defaultFontColor));
-                    resolvedColor = QColor(defaultFontColor);
-                }
-            }
-            QString fontColorValue = resolvedColor.isValid() ? resolvedColor.name(QColor::HexRgb) : defaultFontColor;
-            QString ffmpegFontColor = fontColorValue;
-            ffmpegFontColor.replace("#", "\\#");
-#ifdef Q_OS_WIN
-            escapedFontFile.replace("\\", "/");
-            escapedFontFile.replace(":", "\\\\:");
-#endif
-            qDebug() << "Escaped font path:" << escapedFontFile;
-            QString drawTextFilter = QString("drawtext=text='%1':fontcolor=%2:fontsize=%3:x=w-tw-10:y=h-th-10:shadowcolor=black:shadowx=2:shadowy=2:fontfile=\"%4\"")
-                                         .arg(text.replace("'", "\\'"), ffmpegFontColor, QString::number(fontSize), escapedFontFile);
-            videoFilters << drawTextFilter;
-        }
-    }
-    arguments << "-vf" << videoFilters.join(",");
-
-    QStringList atempoAudioFilters = generateAtempoFilter(speed);
-    if (!atempoAudioFilters.isEmpty())
-    {
-        arguments << "-af" << atempoAudioFilters.join(",");
-    }
-
-    arguments << "-y" << currentOutputFile;
+    QString currentOutputFile = QDir(outputDirectory).filePath(QString("%1_x%2.%3").arg(baseName).arg(speedStr).arg(extension));
 
     logOutputArea->appendPlainText(QString("\nProcessing (%1/%2): %3 -> %4")
                                        .arg(filesProcessedCount + 1)
                                        .arg(totalFilesToProcess)
                                        .arg(inputFileInfo.fileName())
                                        .arg(QFileInfo(currentOutputFile).fileName()));
-    logOutputArea->appendPlainText("FFmpeg command: " + ffmpegPathEdit->text() + " " + arguments.join(" "));
-    qDebug() << "Starting ffmpeg with:" << ffmpegPathEdit->text() << arguments;
 
-    ffmpegProcess->start(ffmpegPathEdit->text(), arguments);
-    if (!ffmpegProcess->waitForStarted(5000))
+    FfmpegProcessor::ProcessingParameters params;
+    params.inputFile = currentInputFile;
+    params.outputFile = currentOutputFile;
+    params.speedFactor = speed;
+    params.overlayEnabled = overlayGroupBox->isChecked();
+    if (params.overlayEnabled)
     {
-        logOutputArea->appendPlainText(QString("Error: Failed to start FFmpeg for %1. Timeout or other error. Process error: %2")
-                                           .arg(inputFileInfo.fileName())
-                                           .arg(ffmpegProcess->errorString()));
-        qDebug() << "FFmpeg failed to start. Error: " << ffmpegProcess->errorString();
-        onFfmpegProcessFinished(ffmpegProcess->exitCode(), QProcess::CrashExit);
-        return;
-    }
-}
-
-QStringList VideoSpeedChangerWidget::generateAtempoFilter(double speedFactor)
-{
-    QStringList atempoFilters;
-    if (speedFactor <= 0.001)
-    {
-        return {"atempo=1.0"};
+        params.fontPath = fontPathEdit->text();
+        params.fontSize = fontSizeSpinBox->value();
+        params.fontColor = fontColorEdit->text();
     }
 
-    double currentFactor = speedFactor;
-    for (int i = 0; i < 10 && (currentFactor < 0.5 || currentFactor > 2.0); ++i)
-    {
-        if (currentFactor < 0.5)
-        {
-            atempoFilters.append("atempo=0.5");
-            currentFactor /= 0.5;
-        }
-        else
-        {
-            atempoFilters.append("atempo=2.0");
-            currentFactor /= 2.0;
-        }
-    }
-    if (currentFactor >= 0.01 && currentFactor <= 100.0)
-    { // Ensure final factor is somewhat reasonable
-        atempoFilters.append(QString("atempo=%1").arg(QString::number(currentFactor, 'f', 4)));
-    }
-    else if (atempoFilters.isEmpty())
-    {                                       // If loop didn't run, and factor is still bad
-        atempoFilters.append("atempo=1.0"); // Fallback
-    }
-
-    if (atempoFilters.isEmpty())
-    {
-        return {"atempo=1.0"};
-    }
-    return atempoFilters;
+    ffmpegProcessor->startProcessing(params);
 }
 
 bool VideoSpeedChangerWidget::isValidVideoFile(const QString &filePath)
